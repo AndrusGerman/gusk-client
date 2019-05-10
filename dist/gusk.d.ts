@@ -1,10 +1,13 @@
 declare class Gusk {
     private host;
     private ssl;
+    RetryShipments: boolean;
+    ws: WebSocket;
+    WaitingTimeForRetry: number;
     private socketEvents;
     private messageIntervalos;
     private conectado;
-    ws: WebSocket;
+    private FailedShipments;
     private uri;
     private ID;
     constructor(host: string, ssl: boolean);
@@ -15,6 +18,7 @@ declare class Gusk {
      */
     Connect(): void;
     ForceClosed(): void;
+    private retryShipmentsFunction;
     /**
      * Closed
      */
@@ -29,7 +33,7 @@ declare class Gusk {
     /**
      * Init
      */
-    private SetVar;
+    private SetOnMessage;
     private getSocketFuntion;
     /**
      * Send

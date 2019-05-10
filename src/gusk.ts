@@ -1,9 +1,13 @@
 class Gusk {
+    // Publics Vars
+    public RetryShipments = false;
+    public ws: WebSocket;
+    public WaitingTimeForRetry = 700;
     // Varibles
     private socketEvents: SocketEventArrayModel[] = new Array;
     private messageIntervalos: number[] = new Array;
     private conectado = false;
-    public ws: WebSocket;
+    private FailedShipments: SocketMessage[] = new Array;
     private uri: string;
     private ID = '';
     // Constructor
@@ -46,10 +50,12 @@ class Gusk {
      * Connect
      */
     public Connect() {
+        if (this.conectado) { return; };
         this.ws = new WebSocket(this.uri);
         this.ws.onclose = (ev) => { this.onclose(); };
         this.ws.onopen = (ev) => { this.onopen(); };
     }
+    // Closed Server
     public ForceClosed() {
         this.ws.onclose = (ev) => { };
         this.ID = '';
@@ -57,6 +63,15 @@ class Gusk {
             clearInterval(val);
         });
         this.ws.close();
+    }
+    // Send Failid message
+    private retryShipmentsFunction() {
+        if (!this.RetryShipments) { return; };
+        for (let ind = 0; ind < this.FailedShipments.length; ind++) {
+            const element = this.FailedShipments[ind];
+            this.SendMessage(element);
+        }
+        this.FailedShipments = new Array;
     }
     /**
      * Closed
@@ -67,15 +82,16 @@ class Gusk {
     private onopen() {
         console.log('WS: Conectado');
         this.conectado = true;
-        this.SetVar();
+        this.SetOnMessage();
         this.SetConfiguration();
+        this.retryShipmentsFunction();
     }
     private onclose() {
         this.conectado = false;
         setTimeout(() => {
-            console.log('WS: Reconectando')
+            console.log('WS: Reconectando ');
             this.Connect();
-        }, 600);
+        }, this.WaitingTimeForRetry);
     }
     private SetConfiguration() {
         if (this.ID == '') {
@@ -97,11 +113,12 @@ class Gusk {
     /**
      * Init
      */
-    private SetVar() {
+    private SetOnMessage() {
         this.ws.onmessage = (event) => {
             let resp = JSON.parse(event.data);
             this.getSocketFuntion(resp.Event)(resp.Data);
         }
+
     }
     private getSocketFuntion(EventName: string): (Data: string) => void {
         for (let ind = 0; ind < this.socketEvents.length; ind++) {
@@ -119,6 +136,9 @@ class Gusk {
         if (this.conectado) {
             let en = JSON.stringify(data);
             this.ws.send(en);
+        } else {
+            if (!this.RetryShipments) { return; };
+            this.FailedShipments.push(data);
         }
     }
     /**

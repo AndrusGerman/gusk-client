@@ -3,10 +3,14 @@ var Gusk = /** @class */ (function () {
     function Gusk(host, ssl) {
         this.host = host;
         this.ssl = ssl;
+        // Publics Vars
+        this.RetryShipments = false;
+        this.WaitingTimeForRetry = 700;
         // Varibles
         this.socketEvents = new Array;
         this.messageIntervalos = new Array;
         this.conectado = false;
+        this.FailedShipments = new Array;
         this.ID = '';
         this.setURI();
         this.defaultChanel();
@@ -45,10 +49,15 @@ var Gusk = /** @class */ (function () {
      */
     Gusk.prototype.Connect = function () {
         var _this = this;
+        if (this.conectado) {
+            return;
+        }
+        ;
         this.ws = new WebSocket(this.uri);
         this.ws.onclose = function (ev) { _this.onclose(); };
         this.ws.onopen = function (ev) { _this.onopen(); };
     };
+    // Closed Server
     Gusk.prototype.ForceClosed = function () {
         this.ws.onclose = function (ev) { };
         this.ID = '';
@@ -56,6 +65,18 @@ var Gusk = /** @class */ (function () {
             clearInterval(val);
         });
         this.ws.close();
+    };
+    // Send Failid message
+    Gusk.prototype.retryShipmentsFunction = function () {
+        if (!this.RetryShipments) {
+            return;
+        }
+        ;
+        for (var ind = 0; ind < this.FailedShipments.length; ind++) {
+            var element = this.FailedShipments[ind];
+            this.SendMessage(element);
+        }
+        this.FailedShipments = new Array;
     };
     /**
      * Closed
@@ -66,16 +87,17 @@ var Gusk = /** @class */ (function () {
     Gusk.prototype.onopen = function () {
         console.log('WS: Conectado');
         this.conectado = true;
-        this.SetVar();
+        this.SetOnMessage();
         this.SetConfiguration();
+        this.retryShipmentsFunction();
     };
     Gusk.prototype.onclose = function () {
         var _this = this;
         this.conectado = false;
         setTimeout(function () {
-            console.log('WS: Reconectando');
+            console.log('WS: Reconectando ');
             _this.Connect();
-        }, 600);
+        }, this.WaitingTimeForRetry);
     };
     Gusk.prototype.SetConfiguration = function () {
         if (this.ID == '') {
@@ -96,7 +118,7 @@ var Gusk = /** @class */ (function () {
     /**
      * Init
      */
-    Gusk.prototype.SetVar = function () {
+    Gusk.prototype.SetOnMessage = function () {
         var _this = this;
         this.ws.onmessage = function (event) {
             var resp = JSON.parse(event.data);
@@ -119,6 +141,13 @@ var Gusk = /** @class */ (function () {
         if (this.conectado) {
             var en = JSON.stringify(data);
             this.ws.send(en);
+        }
+        else {
+            if (!this.RetryShipments) {
+                return;
+            }
+            ;
+            this.FailedShipments.push(data);
         }
     };
     /**

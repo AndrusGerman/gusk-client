@@ -5,7 +5,7 @@ var Gusk = /** @class */ (function () {
         this.ssl = ssl;
         // Publics Vars
         this.RetryShipments = false;
-        this.WaitingTimeForRetry = 700;
+        this.WaitingTimeForRetry = 800;
         // Varibles
         this.socketEvents = new Array;
         this.messageIntervalos = new Array;
@@ -13,33 +13,39 @@ var Gusk = /** @class */ (function () {
         this.FailedShipments = new Array;
         this.ID = '';
         this.setURI();
-        this.defaultChanel();
+        this.defaultChanelForCFG();
     }
     Gusk.prototype.setURI = function () {
-        this.uri = 'ws:';
+        this.URI = 'ws:';
         if (this.ssl) {
-            this.uri = 'wss:';
+            this.URI = 'wss:';
         }
-        this.uri += '//' + this.host;
+        this.URI += '//' + this.host;
     };
-    Gusk.prototype.defaultChanel = function () {
+    /**
+     * GetID
+     */
+    Gusk.prototype.GetID = function () {
+        return this.ID;
+    };
+    Gusk.prototype.defaultChanelForCFG = function () {
         var _this = this;
-        console.log('WS: Welcome to Gusk');
+        console.log('GUSK: Welcome to Gusk');
         this.OnEvent('cfg', function (val) {
             switch (val.Mode) {
-                case 'set':
-                    console.log("CFG: SetID " + val.Data);
+                case 'set-configuration':
+                    console.log("GUSK-CLIENT-LOG: ID='" + val.Data + "'");
                     _this.ID = val.Data;
                     break;
-                case 'message':
-                    console.log("CFG-SERVER: " + val.Data);
+                case 'server-log':
+                    console.log("GUSK-SERVER-LOG: " + val.Data);
                     break;
-                case 'clear-conection':
-                    console.log("CFG: Finish");
+                case 'close-configuration':
+                    console.log("GUSK-CLIENT-LOG: Finish");
                     _this.ForceClosed();
                     break;
                 default:
-                    console.log('CFG: No valido');
+                    console.log("GUSK-CLIENT-LOG: Mode \"" + val.Mode + "\" not found");
                     break;
             }
         });
@@ -53,7 +59,7 @@ var Gusk = /** @class */ (function () {
             return;
         }
         ;
-        this.ws = new WebSocket(this.uri);
+        this.ws = new WebSocket(this.URI);
         this.ws.onclose = function (ev) { _this.onclose(); };
         this.ws.onopen = function (ev) { _this.onopen(); };
     };
@@ -74,7 +80,7 @@ var Gusk = /** @class */ (function () {
         ;
         for (var ind = 0; ind < this.FailedShipments.length; ind++) {
             var element = this.FailedShipments[ind];
-            this.SendMessage(element);
+            this.SendMessageSk(element);
         }
         this.FailedShipments = new Array;
     };
@@ -82,31 +88,30 @@ var Gusk = /** @class */ (function () {
      * Closed
      */
     Gusk.prototype.Close = function () {
-        this.SendMessage(new SocketMessage('cfg', { 'Mode': 'server-closed' }));
+        this.SendMessageSk(new SocketMessage('cfg', { 'Mode': 'close-server' }));
     };
     Gusk.prototype.onopen = function () {
-        console.log('WS: Conectado');
+        console.log('GUSK: Conectado');
         this.conectado = true;
         this.SetOnMessage();
         this.SetConfiguration();
-        this.retryShipmentsFunction();
     };
     Gusk.prototype.onclose = function () {
         var _this = this;
         this.conectado = false;
         setTimeout(function () {
-            console.log('WS: Reconectando ');
+            console.log('GUSK: Reconectando...');
             _this.Connect();
         }, this.WaitingTimeForRetry);
     };
     Gusk.prototype.SetConfiguration = function () {
         if (this.ID == '') {
-            console.log('ST: New Configuration');
-            this.SendMessage(new SocketMessage('cfg', { 'Mode': 'get' }));
+            console.log('GUSK-CLIENT-LOG: New Configuration');
+            this.SendMessageSk(new SocketMessage('cfg', { 'Mode': 'get-configuration-server' }));
         }
         else {
-            console.log('ST: Old Configuration');
-            this.SendMessage(new SocketMessage('cfg', { 'Mode': 'set', 'Data': this.ID }));
+            console.log('GUSK-CLIENT-LOG: Set Old Configuration');
+            this.SendMessageSk(new SocketMessage('cfg', { 'Mode': 'set-configuration-server', 'Data': this.ID }));
         }
     };
     /**
@@ -127,19 +132,24 @@ var Gusk = /** @class */ (function () {
     };
     Gusk.prototype.getSocketFuntion = function (EventName) {
         for (var ind = 0; ind < this.socketEvents.length; ind++) {
-            var element = this.socketEvents[ind];
-            if (EventName == element.EventName) {
-                return element.Func;
+            if (EventName == this.socketEvents[ind].EventName) {
+                return this.socketEvents[ind].Func;
             }
         }
-        return (function (string) { });
+        return (function (Data) { console.log("GUSK-CLIENT-LOG: Event '" + EventName + "' not Found"); });
     };
     /**
      * Send
      */
-    Gusk.prototype.SendMessage = function (data) {
+    Gusk.prototype.SendMessage = function (EventName, Data) {
+        this.SendMessageSk(new SocketMessage(EventName, Data));
+    };
+    /**
+     * SendMessageSk
+     */
+    Gusk.prototype.SendMessageSk = function (message) {
         if (this.conectado) {
-            var en = JSON.stringify(data);
+            var en = JSON.stringify(message);
             this.ws.send(en);
         }
         else {
@@ -147,7 +157,7 @@ var Gusk = /** @class */ (function () {
                 return;
             }
             ;
-            this.FailedShipments.push(data);
+            this.FailedShipments.push(message);
         }
     };
     /**
@@ -156,7 +166,7 @@ var Gusk = /** @class */ (function () {
     Gusk.prototype.SendInterval = function (data, time) {
         var _this = this;
         var closeID = setInterval(function () {
-            _this.SendMessage(data);
+            _this.SendMessageSk(data);
         }, time);
         this.messageIntervalos.push(closeID);
         return function () {

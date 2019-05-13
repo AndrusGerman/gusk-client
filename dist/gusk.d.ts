@@ -8,11 +8,15 @@ declare class Gusk {
     private messageIntervalos;
     private conectado;
     private FailedShipments;
-    private uri;
+    private URI;
     private ID;
     constructor(host: string, ssl: boolean);
     private setURI;
-    private defaultChanel;
+    /**
+     * GetID
+     */
+    GetID(): string;
+    private defaultChanelForCFG;
     /**
      * Connect
      */
@@ -38,7 +42,11 @@ declare class Gusk {
     /**
      * Send
      */
-    SendMessage(data: SocketMessage): void;
+    SendMessage(EventName: string, Data: string): void;
+    /**
+     * SendMessageSk
+     */
+    SendMessageSk(message: SocketMessage): void;
     /**
      * SendInterval
      */

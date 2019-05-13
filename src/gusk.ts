@@ -2,13 +2,13 @@ class Gusk {
     // Publics Vars
     public RetryShipments = false;
     public ws: WebSocket;
-    public WaitingTimeForRetry = 700;
+    public WaitingTimeForRetry = 800;
     // Varibles
     private socketEvents: SocketEventArrayModel[] = new Array;
     private messageIntervalos: number[] = new Array;
     private conectado = false;
     private FailedShipments: SocketMessage[] = new Array;
-    private uri: string;
+    private URI: string;
     private ID = '';
     // Constructor
     constructor(
@@ -16,32 +16,38 @@ class Gusk {
         private ssl: boolean,
     ) {
         this.setURI()
-        this.defaultChanel();
+        this.defaultChanelForCFG();
     }
     private setURI() {
-        this.uri = 'ws:';
+        this.URI = 'ws:';
         if (this.ssl) {
-            this.uri = 'wss:'
+            this.URI = 'wss:'
         }
-        this.uri += '//' + this.host;
+        this.URI += '//' + this.host;
     }
-    private defaultChanel() {
-        console.log('WS: Welcome to Gusk')
+    /**
+     * GetID
+     */
+    public GetID() {
+        return this.ID;
+    }
+    private defaultChanelForCFG() {
+        console.log('GUSK: Welcome to Gusk')
         this.OnEvent('cfg', (val) => {
             switch (val.Mode) {
-                case 'set':
-                    console.log(`CFG: SetID ${val.Data}`);
+                case 'set-configuration':
+                    console.log(`GUSK-CLIENT-LOG: ID='${val.Data}'`);
                     this.ID = val.Data;
                     break;
-                case 'message':
-                    console.log(`CFG-SERVER: ${val.Data}`);
+                case 'server-log':
+                    console.log(`GUSK-SERVER-LOG: ${val.Data}`);
                     break
-                case 'clear-conection':
-                    console.log(`CFG: Finish`);
+                case 'close-configuration':
+                    console.log(`GUSK-CLIENT-LOG: Finish`);
                     this.ForceClosed();
                     break
                 default:
-                    console.log('CFG: No valido');
+                    console.log(`GUSK-CLIENT-LOG: Mode "${val.Mode}" not found`);
                     break;
             }
         })
@@ -51,7 +57,7 @@ class Gusk {
      */
     public Connect() {
         if (this.conectado) { return; };
-        this.ws = new WebSocket(this.uri);
+        this.ws = new WebSocket(this.URI);
         this.ws.onclose = (ev) => { this.onclose(); };
         this.ws.onopen = (ev) => { this.onopen(); };
     }
@@ -69,7 +75,7 @@ class Gusk {
         if (!this.RetryShipments) { return; };
         for (let ind = 0; ind < this.FailedShipments.length; ind++) {
             const element = this.FailedShipments[ind];
-            this.SendMessage(element);
+            this.SendMessageSk(element);
         }
         this.FailedShipments = new Array;
     }
@@ -77,29 +83,28 @@ class Gusk {
      * Closed
      */
     public Close() {
-        this.SendMessage(new SocketMessage('cfg', { 'Mode': 'server-closed' }));
+        this.SendMessageSk(new SocketMessage('cfg', { 'Mode': 'close-server' }));
     }
     private onopen() {
-        console.log('WS: Conectado');
+        console.log('GUSK: Conectado');
         this.conectado = true;
         this.SetOnMessage();
         this.SetConfiguration();
-        this.retryShipmentsFunction();
     }
     private onclose() {
         this.conectado = false;
         setTimeout(() => {
-            console.log('WS: Reconectando ');
+            console.log('GUSK: Reconectando...');
             this.Connect();
         }, this.WaitingTimeForRetry);
     }
     private SetConfiguration() {
         if (this.ID == '') {
-            console.log('ST: New Configuration');
-            this.SendMessage(new SocketMessage('cfg', { 'Mode': 'get' }));
+            console.log('GUSK-CLIENT-LOG: New Configuration');
+            this.SendMessageSk(new SocketMessage('cfg', { 'Mode': 'get-configuration-server' }));
         } else {
-            console.log('ST: Old Configuration');
-            this.SendMessage(new SocketMessage('cfg', { 'Mode': 'set', 'Data': this.ID }));
+            console.log('GUSK-CLIENT-LOG: Set Old Configuration');
+            this.SendMessageSk(new SocketMessage('cfg', { 'Mode': 'set-configuration-server', 'Data': this.ID }));
         }
     }
     /**
@@ -118,27 +123,31 @@ class Gusk {
             let resp = JSON.parse(event.data);
             this.getSocketFuntion(resp.Event)(resp.Data);
         }
-
     }
-    private getSocketFuntion(EventName: string): (Data: string) => void {
+    private getSocketFuntion(EventName: string): (Data) => void {
         for (let ind = 0; ind < this.socketEvents.length; ind++) {
-            const element = this.socketEvents[ind];
-            if (EventName == element.EventName) {
-                return element.Func;
+            if (EventName == this.socketEvents[ind].EventName) {
+                return this.socketEvents[ind].Func;
             }
         }
-        return ((string: string) => { })
+        return ((Data) => { console.log(`GUSK-CLIENT-LOG: Event '${EventName}' not Found`) })
     }
     /**
      * Send
      */
-    public SendMessage(data: SocketMessage) {
+    public SendMessage(EventName: string, Data: string) {
+        this.SendMessageSk(new SocketMessage(EventName, Data));
+    }
+    /**
+     * SendMessageSk
+     */
+    public SendMessageSk(message: SocketMessage) {
         if (this.conectado) {
-            let en = JSON.stringify(data);
+            let en = JSON.stringify(message);
             this.ws.send(en);
         } else {
             if (!this.RetryShipments) { return; };
-            this.FailedShipments.push(data);
+            this.FailedShipments.push(message);
         }
     }
     /**
@@ -146,7 +155,7 @@ class Gusk {
      */
     public SendInterval(data: SocketMessage, time: number): () => void {
         let closeID = setInterval(() => {
-            this.SendMessage(data);
+            this.SendMessageSk(data);
         }, time)
         this.messageIntervalos.push(closeID);
         return () => {

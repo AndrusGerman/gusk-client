@@ -5,50 +5,27 @@ var Gusk = /** @class */ (function () {
         this.ssl = ssl;
         // Publics Vars
         this.RetryShipments = false;
-        this.WaitingTimeForRetry = 800;
+        this.WaitingTimeForRetry = 1500;
+        this.MaxRetryConnection = 5;
+        this.OnClose = function () { };
+        this.OnOpen = function () { };
+        this.RetryConnectionCount = 0;
+        this.RetryConnection = true;
+        this.ManualDisconection = false;
         // Varibles
         this.socketEvents = new Array;
         this.messageIntervalos = new Array;
         this.conectado = false;
         this.FailedShipments = new Array;
-        this.ID = '';
-        this.setURI();
-        this.defaultChanelForCFG();
+        this.Client = new Client;
+        this.URI = CreateURI(host, ssl);
+        this.EvenyCFG();
     }
-    Gusk.prototype.setURI = function () {
-        this.URI = 'ws:';
-        if (this.ssl) {
-            this.URI = 'wss:';
-        }
-        this.URI += '//' + this.host;
-    };
     /**
      * GetID
      */
-    Gusk.prototype.GetID = function () {
-        return this.ID;
-    };
-    Gusk.prototype.defaultChanelForCFG = function () {
-        var _this = this;
-        console.log('GUSK: Welcome to Gusk');
-        this.OnEvent('cfg', function (val) {
-            switch (val.Mode) {
-                case 'set-configuration':
-                    console.log("GUSK-CLIENT-LOG: ID='" + val.Data + "'");
-                    _this.ID = val.Data;
-                    break;
-                case 'server-log':
-                    console.log("GUSK-SERVER-LOG: " + val.Data);
-                    break;
-                case 'close-configuration':
-                    console.log("GUSK-CLIENT-LOG: Finish");
-                    _this.ForceClosed();
-                    break;
-                default:
-                    console.log("GUSK-CLIENT-LOG: Mode \"" + val.Mode + "\" not found");
-                    break;
-            }
-        });
+    Gusk.prototype.ID = function () {
+        return this.Client.ID;
     };
     /**
      * Connect
@@ -60,19 +37,41 @@ var Gusk = /** @class */ (function () {
         }
         ;
         this.ws = new WebSocket(this.URI);
-        this.ws.onclose = function (ev) { _this.onclose(); };
-        this.ws.onopen = function (ev) { _this.onopen(); };
+        this.ws.onclose = function (ev) { _this.OnCloseGusk(); };
+        this.ws.onopen = function (ev) { _this.OnOpenGusk(); };
+    };
+    /**
+     * ConnectRetry
+     */
+    Gusk.prototype.ConnectRetry = function () {
+        this.ws.close();
+        if (this.RetryConnection == false || this.ManualDisconection == true) {
+            this.RetryConnectionCount = 0;
+            return;
+        }
+        // Check retry connection count
+        this.RetryConnectionCount++;
+        if (this.RetryConnectionCount == this.MaxRetryConnection) {
+            this.ManualDisconection = true;
+            this.RetryConnectionCount = 0;
+            console.log('GUSK: Max retry connection...');
+            return;
+        }
+        console.log('GUSK: Reconectando...');
+        this.Connect();
     };
     // Closed Server
     Gusk.prototype.ForceClosed = function () {
-        this.ws.onclose = function (ev) { };
-        this.ID = '';
+        this.ManualDisconection = true;
+        this.Client.Reset();
+        this.conectado = false;
+        this.RetryConnectionCount = 0;
         this.messageIntervalos.forEach(function (val) {
             clearInterval(val);
         });
         this.ws.close();
     };
-    // Send Failid message
+    // retryShipmentsFunction Send Failid message
     Gusk.prototype.retryShipmentsFunction = function () {
         if (!this.RetryShipments) {
             return;
@@ -80,7 +79,7 @@ var Gusk = /** @class */ (function () {
         ;
         for (var ind = 0; ind < this.FailedShipments.length; ind++) {
             var element = this.FailedShipments[ind];
-            this.SendMessageSk(element);
+            this.SendSk(element);
         }
         this.FailedShipments = new Array;
     };
@@ -88,36 +87,51 @@ var Gusk = /** @class */ (function () {
      * Closed
      */
     Gusk.prototype.Close = function () {
-        this.SendMessageSk(new SocketMessage('cfg', { 'Mode': 'close-server' }));
+        this.RetryConnectionCount = 0;
+        this.ManualDisconection = true;
+        if (this.conectado) {
+            this.SendSk(new SocketMessage('cfg', { 'Mode': ModeServer.CloseGusk }));
+        }
+        else {
+            console.log('GUSK-CLIENT-LOG: Error Not connect');
+        }
     };
-    Gusk.prototype.onopen = function () {
-        console.log('GUSK: Conectado');
+    Gusk.prototype.OnOpenGusk = function () {
+        this.ManualDisconection = false;
         this.conectado = true;
         this.SetOnMessage();
         this.SetConfiguration();
+        this.OnOpen();
     };
-    Gusk.prototype.onclose = function () {
+    /**
+     * completeConfiguration
+     */
+    Gusk.prototype.onCompleteConfiguration = function () {
+        this.retryShipmentsFunction();
+    };
+    Gusk.prototype.OnCloseGusk = function () {
         var _this = this;
         this.conectado = false;
         setTimeout(function () {
-            console.log('GUSK: Reconectando...');
-            _this.Connect();
+            _this.ConnectRetry();
         }, this.WaitingTimeForRetry);
+        this.OnClose();
     };
     Gusk.prototype.SetConfiguration = function () {
-        if (this.ID == '') {
+        if (!this.Client.Data) {
             console.log('GUSK-CLIENT-LOG: New Configuration');
-            this.SendMessageSk(new SocketMessage('cfg', { 'Mode': 'get-configuration-server' }));
+            this.SendSk(new SocketMessage('cfg', { 'Mode': ModeServer.GetConfiguration }));
         }
         else {
             console.log('GUSK-CLIENT-LOG: Set Old Configuration');
-            this.SendMessageSk(new SocketMessage('cfg', { 'Mode': 'set-configuration-server', 'Data': this.ID }));
+            this.SendSk(new SocketMessage('cfg', { 'Mode': ModeServer.SetConfigurationReconection, 'Data': { 'ID': this.Client.ID } }));
+            this.onCompleteConfiguration();
         }
     };
     /**
-     * OnEvent
+     * Event
      */
-    Gusk.prototype.OnEvent = function (EventName, EventFuntion) {
+    Gusk.prototype.Event = function (EventName, EventFuntion) {
         this.socketEvents.push(new SocketEventArrayModel(EventName, EventFuntion));
     };
     /**
@@ -138,16 +152,38 @@ var Gusk = /** @class */ (function () {
         }
         return (function (Data) { console.log("GUSK-CLIENT-LOG: Event '" + EventName + "' not Found"); });
     };
+    Gusk.prototype.EvenyCFG = function () {
+        var _this = this;
+        this.Event('cfg', function (val) {
+            switch (val.Mode) {
+                case ModeClient.SetConfiguration:
+                    _this.Client.SetID(val.Data);
+                    _this.onCompleteConfiguration();
+                    break;
+                case ModeClient.Log:
+                    console.log("GUSK-SERVER-LOG: " + val.Data);
+                    break;
+                case ModeClient.CloseGusk:
+                    _this.ManualDisconection = true;
+                    console.log("GUSK-CLIENT-LOG: Finish connection");
+                    _this.ForceClosed();
+                    break;
+                default:
+                    console.log("GUSK-CLIENT-LOG: Mode \"" + val.Mode + "\" not found");
+                    break;
+            }
+        });
+    };
     /**
      * Send
      */
-    Gusk.prototype.SendMessage = function (EventName, Data) {
-        this.SendMessageSk(new SocketMessage(EventName, Data));
+    Gusk.prototype.Send = function (EventName, Data) {
+        this.SendSk(new SocketMessage(EventName, Data));
     };
     /**
      * SendMessageSk
      */
-    Gusk.prototype.SendMessageSk = function (message) {
+    Gusk.prototype.SendSk = function (message) {
         if (this.conectado) {
             var en = JSON.stringify(message);
             this.ws.send(en);
@@ -166,7 +202,7 @@ var Gusk = /** @class */ (function () {
     Gusk.prototype.SendInterval = function (data, time) {
         var _this = this;
         var closeID = setInterval(function () {
-            _this.SendMessageSk(data);
+            _this.SendSk(data);
         }, time);
         this.messageIntervalos.push(closeID);
         return function () {
@@ -191,3 +227,46 @@ var SocketMessage = /** @class */ (function () {
     }
     return SocketMessage;
 }());
+var Client = /** @class */ (function () {
+    function Client() {
+        this.Data = false;
+        this.ID = '';
+    }
+    /**
+     * SetID
+     */
+    Client.prototype.SetID = function (ID) {
+        this.Data = true;
+        this.ID = ID;
+    };
+    /**
+     * Reset
+     */
+    Client.prototype.Reset = function () {
+        this.Data = false;
+        this.ID = '';
+    };
+    return Client;
+}());
+var ModeServer = {
+    CloseGusk: "client->server:close-gusk",
+    GetConfiguration: "client->server:get-configuration",
+    SetConfigurationReconection: "client->server:set-configuration-reconection",
+};
+var ModeClient = {
+    Log: "server->client:log",
+    SetConfiguration: "server->client:set-configuration",
+    CloseGusk: "server->client:close-gusk",
+};
+function CreateURI(host, ssl) {
+    var URI = '';
+    if (ssl) {
+        URI = 'wss:';
+    }
+    else {
+        URI = 'ws:';
+    }
+    URI += '//' + host;
+    return URI;
+}
+console.log('GUSK: Welcome to Gusk');

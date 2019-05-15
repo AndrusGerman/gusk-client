@@ -2,51 +2,64 @@ declare class Gusk {
     private host;
     private ssl;
     RetryShipments: boolean;
-    ws: WebSocket;
+    private ws;
     WaitingTimeForRetry: number;
+    MaxRetryConnection: number;
+    OnClose: () => void;
+    OnOpen: () => void;
+    private RetryConnectionCount;
+    RetryConnection: boolean;
+    private ManualDisconection;
     private socketEvents;
     private messageIntervalos;
     private conectado;
     private FailedShipments;
     private URI;
-    private ID;
+    private Client;
     constructor(host: string, ssl: boolean);
-    private setURI;
     /**
      * GetID
      */
-    GetID(): string;
-    private defaultChanelForCFG;
+    ID(): string;
     /**
      * Connect
      */
     Connect(): void;
+    /**
+     * ConnectRetry
+     */
+    private ConnectRetry;
     ForceClosed(): void;
     private retryShipmentsFunction;
     /**
      * Closed
      */
     Close(): void;
-    private onopen;
-    private onclose;
+    private OnOpenGusk;
+    /**
+     * completeConfiguration
+     */
+    onCompleteConfiguration(): void;
+    private OnCloseGusk;
     private SetConfiguration;
     /**
-     * OnEvent
+     * Event
      */
-    OnEvent(EventName: string, EventFuntion: ((Data: any) => void)): void;
+    Event(EventName: string, EventFuntion: ((Data: any) => void)): void;
     /**
      * Init
      */
     private SetOnMessage;
     private getSocketFuntion;
+    private EvenyCFG;
     /**
      * Send
      */
-    SendMessage(EventName: string, Data: string): void;
+    Send(EventName: string, Data: string): void;
     /**
      * SendMessageSk
      */
-    SendMessageSk(message: SocketMessage): void;
+    SendSk(message: SocketMessage): void;
     /**
      * SendInterval
      */
@@ -54,11 +67,35 @@ declare class Gusk {
 }
 declare class SocketEventArrayModel {
     EventName: string;
-    Func: ((Data: string) => void);
-    constructor(EventName: string, Func: ((Data: string) => void));
+    Func: ((Data: any) => void);
+    constructor(EventName: string, Func: ((Data: any) => void));
 }
 declare class SocketMessage {
     Event: string;
     Data: any;
+    Date: number;
     constructor(Event: string, Data: any);
 }
+declare class Client {
+    Data: boolean;
+    ID: string;
+    /**
+     * SetID
+     */
+    SetID(ID: string): void;
+    /**
+     * Reset
+     */
+    Reset(): void;
+}
+declare const ModeServer: {
+    CloseGusk: string;
+    GetConfiguration: string;
+    SetConfigurationReconection: string;
+};
+declare const ModeClient: {
+    Log: string;
+    SetConfiguration: string;
+    CloseGusk: string;
+};
+declare function CreateURI(host: string, ssl: boolean): string;
